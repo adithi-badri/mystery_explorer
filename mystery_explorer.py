@@ -12,7 +12,7 @@ Controls:
   - q            : quit
 
 Legend on the map:
-  ^ = You (player)
+  @ = You (player)
   # = Wall
   . = Floor / path
   K = Key
@@ -20,6 +20,8 @@ Legend on the map:
   ? = Puzzle tile
   G = Goal / exit
 """
+
+from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Tuple
@@ -65,7 +67,7 @@ def find_player(grid: MapGrid) -> Position:
         for c, ch in enumerate(row):
             if ch == "@":
                 return r, c
-    raise ValueError("Player start position not found.")
+    raise ValueError("Player start position (@) not found in map.")
 
 
 def print_map(grid: MapGrid, player: PlayerState) -> None:
@@ -74,198 +76,138 @@ def print_map(grid: MapGrid, player: PlayerState) -> None:
         line = []
         for c, ch in enumerate(row):
             if (r, c) == player.position:
-                line.append("^")
+                line.append("@")
             else:
                 line.append(ch)
         print("".join(line))
 
 
 def print_status(player: PlayerState) -> None:
-    print("\nScore:", player.score)
-
+    print(f"\nScore: {player.score}")
     if player.inventory:
         print("Inventory:")
-        for item in player.inventory:
-            print(" -", item, player.inventory[item])
+        for item, count in player.inventory.items():
+            print(f"  - {item}: {count}")
     else:
-        print("Inventory: empty")
+        print("Inventory: (empty)")
 
 
 def add_item(player: PlayerState, item: str, score: int = 0) -> None:
-
-    if item in player.inventory:
-        player.inventory[item] = player.inventory[item] + 1
-    else:
-        player.inventory[item] = 1
-
-    if score > 0:
-        player.score = player.score + score
-        print("\nYou obtained:", item, "+", score, "points")
-    else:
-        print("\nYou obtained:", item)
+    player.inventory[item] = player.inventory.get(item, 0) + 1
+    if score:
+        player.score += score
+    print(f"\nYou obtained: {item} (+{score} points)" if score else f"\nYou obtained: {item}")
 
 
 def handle_puzzle(player: PlayerState, puzzle_index: int) -> None:
-
     if puzzle_index >= len(PUZZLES):
-        print("\nThe inscription is too faded to read.")
+        print("\nYou find an old faded inscription, but it's unreadable.")
         return
-
     puzzle = PUZZLES[puzzle_index]
-
-    print("\nPuzzle:")
+    print("\nYou encounter a mysterious inscription:")
     print(puzzle["question"])
-
-    answer = input("Your answer: ").lower()
-
+    answer = input("Your answer: ").strip().lower()
     if answer == puzzle["answer"]:
-
-        reward = puzzle["reward"]
-
-        name = reward[0]
-        points = reward[1]
-
-        print("Correct!")
-
-        add_item(player, name, points)
-
-        player.solved_puzzles = player.solved_puzzles + 1
-
+        name, reward_score = puzzle["reward"]
+        print("Correct! The riddle glows and reveals a reward.")
+        add_item(player, name, reward_score)
+        player.solved_puzzles += 1
     else:
-        print("Incorrect.")
+        print("The inscription fades. Perhaps you can try another puzzle later.")
 
 
 def try_move(grid: MapGrid, player: PlayerState, dr: int, dc: int) -> bool:
+    r, c = player.position
+    nr, nc = r + dr, c + dc
 
-    r = player.position[0]
-    c = player.position[1]
-
-    nr = r + dr
-    nc = c + dc
-
-    if nr < 0 or nr >= len(grid):
-        print("Edge of map.")
-        return False
-
-    if nc < 0 or nc >= len(grid[0]):
-        print("Edge of map.")
+    if nr < 0 or nr >= len(grid) or nc < 0 or nc >= len(grid[0]):
+        print("You bump into the edge of the world.")
         return False
 
     tile = grid[nr][nc]
-
     if tile == "#":
-        print("Wall.")
+        print("A solid wall blocks your path.")
         return False
 
+    # Interactions
     if tile == "K":
-
         add_item(player, "key", 5)
-
         grid[nr][nc] = "."
-
     elif tile == "?":
-
         handle_puzzle(player, player.solved_puzzles)
-
         grid[nr][nc] = "."
-
     elif tile == "C":
-
-        if "key" in player.inventory and player.opened_chest == False:
-
-            print("\nYou unlock the chest!")
-
-            player.inventory["key"] = player.inventory["key"] - 1
-
+        if player.inventory.get("key", 0) > 0 and not player.opened_chest:
+            print("\nYou unlock the chest with your key!")
+            player.inventory["key"] -= 1
             if player.inventory["key"] <= 0:
                 del player.inventory["key"]
-
             add_item(player, "treasure", 50)
-
             player.opened_chest = True
-
             grid[nr][nc] = "."
-
         else:
-
-            print("Chest is locked.")
-
+            print("\nThe chest is locked. You need a key.")
+            # Allow standing on the chest tile even if not opened
     elif tile == "G":
-
-        print("\nYou reach the exit!")
-
+        print("\nYou reach the glowing exit portal!")
         player.position = (nr, nc)
-
         return True
 
     player.position = (nr, nc)
-
     return False
 
 
-def main():
-
+def main() -> None:
     print("Welcome to Mystery Explorer!")
+    print("Explore the map, solve puzzles, collect items, and find the goal (G).")
+    print()
+    print("Rules & controls:")
+    print("  - You are '@' on the map. Use:")
+    print("      w = up, a = left, s = down, d = right")
+    print("      i = show your inventory and score")
+    print("      q = quit the game")
+    print("  - Symbols on the map:")
+    print("      # = wall (you cannot move through)")
+    print("      . = floor / open path")
+    print("      K = key (pick it up by stepping on it)")
+    print("      C = locked chest (needs a key; may contain treasure)")
+    print("      ? = puzzle tile (step on it to answer a riddle)")
+    print("      G = glowing exit (reach this to finish)")
+    print()
+    print("Goal: reach G. For maximum score, solve puzzles and open the chest before exiting.")
 
-    print("Reach G to escape.")
-
-    grid = []
-
-    for row in BASE_MAP:
-        grid.append(row.copy())
-
-    start = find_player(grid)
-
-    grid[start[0]][start[1]] = "."
-
-    player = PlayerState(start)
+    grid: MapGrid = [row.copy() for row in BASE_MAP]
+    start_pos = find_player(grid)
+    # Remove the @ from the static map; player position is tracked separately
+    grid[start_pos[0]][start_pos[1]] = "."
+    player = PlayerState(position=start_pos)
 
     while True:
-
         print_map(grid, player)
-
         print_status(player)
-
-        cmd = input("\nMove (w/a/s/d), i=inventory, q=quit: ").lower()
+        cmd = input("\nMove (w/a/s/d), i=inventory, q=quit: ").strip().lower()
 
         if cmd == "q":
-            print("Goodbye.")
+            print("\nYou decide to end your exploration. Goodbye!")
             break
-
         if cmd == "i":
             print_status(player)
             continue
 
-        if cmd == "w":
-            dr = -1
-            dc = 0
-
-        elif cmd == "s":
-            dr = 1
-            dc = 0
-
-        elif cmd == "a":
-            dr = 0
-            dc = -1
-
-        elif cmd == "d":
-            dr = 0
-            dc = 1
-
-        else:
-            print("Invalid command.")
+        moves = {"w": (-1, 0), "s": (1, 0), "a": (0, -1), "d": (0, 1)}
+        if cmd not in moves:
+            print("Unknown command. Use w/a/s/d to move, i for inventory, q to quit.")
             continue
 
+        dr, dc = moves[cmd]
         reached_goal = try_move(grid, player, dr, dc)
-
         if reached_goal:
-
             print_map(grid, player)
-
             print_status(player)
-
-            print("\nYou escape the dungeon. Victory!")
-
+            if player.opened_chest:
+                print("\nYou escape with your treasure. Victory!")
+            else:
+                print("\nYou escape, but you feel you may have left something valuable behind…")
             break
 
 
